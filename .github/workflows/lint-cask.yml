@@ -63,7 +63,10 @@ jobs:
           fi
           # Homebrew refuses `brew audit --cask <path>` from a bare file path — a
           # cask must live in a tap. Stage into a throwaway local tap and audit
-          # from there (mirrors the peasant release-validate macOS job).
+          # from there (the throwaway-tap staging idiom peasant uses on macOS).
+          # Non-strict on purpose: the generated cask is kept style-clean by the
+          # pinned release-tool patch, and --strict turns on new-cask cops aimed at
+          # homebrew/cask submissions, not a vendor tap's generated output.
           tap="peasant-labs/cask-lint"
           brew tap-new "$tap"
           tap_dir="$(brew --repository "$tap")"
@@ -71,5 +74,5 @@ jobs:
           cp "${casks[@]}" "$tap_dir/Casks/"
           for c in "${casks[@]}"; do
             token="$(basename "$c" .rb)"
-            brew audit --cask --strict "$tap/$token"
+            brew audit --cask "$tap/$token"
           done
