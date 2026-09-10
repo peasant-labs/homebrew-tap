@@ -1,0 +1,78 @@
+name: lint cask
+
+# Guards the GENERATED Casks/peasant.rb that the Peasant release bot pushes to
+# main on each final release. This mirrors the peasant repo's own split: brew
+# style is the Linux-safe subset, while brew audit --cask is known-broken for
+# macOS casks on Linux, so the audit runs on macOS only. Both jobs no-op cleanly
+# while Casks/ is empty (before the first final release populates the tap).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Casks/**"
+      - ".github/workflows/lint-cask.yml"
+  pull_request:
+    paths:
+      - "Casks/**"
+      - ".github/workflows/lint-cask.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  style:
+    name: brew style (linux)
+    # GitHub-hosted ubuntu: setup-homebrew needs the preinstalled
+    # /home/linuxbrew tree owned by the job user.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@5037c6f1012cc5ea0b9f03fedbaf9955ed9e51e0 # main
+      - name: brew style the cask(s)
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          casks=(Casks/*.rb)
+          if [ ${#casks[@]} -eq 0 ]; then
+            echo "Casks/ is empty — no cask to style yet (pre-first-release)."
+            exit 0
+          fi
+          brew style "${casks[@]}"
+
+  audit:
+    name: brew audit --cask (macos)
+    # brew audit --cask is known-broken on Linux; run it on macOS only. macOS
+    # runners ship Homebrew preinstalled, so no setup-homebrew step is needed.
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: brew audit the cask(s)
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          casks=(Casks/*.rb)
+          if [ ${#casks[@]} -eq 0 ]; then
+            echo "Casks/ is empty — no cask to audit yet (pre-first-release)."
+            exit 0
+          fi
+          # Homebrew refuses `brew audit --cask <path>` from a bare file path — a
+          # cask must live in a tap. Stage into a throwaway local tap and audit
+          # from there (the throwaway-tap staging idiom peasant uses on macOS).
+          # Non-strict on purpose: the generated cask is kept style-clean by the
+          # pinned release-tool patch, and --strict turns on new-cask cops aimed at
+          # homebrew/cask submissions, not a vendor tap's generated output.
+          tap="peasant-labs/cask-lint"
+          brew tap-new "$tap"
+          tap_dir="$(brew --repository "$tap")"
+          mkdir -p "$tap_dir/Casks"
+          cp "${casks[@]}" "$tap_dir/Casks/"
+          for c in "${casks[@]}"; do
+            token="$(basename "$c" .rb)"
+            brew audit --cask "$tap/$token"
+          done
