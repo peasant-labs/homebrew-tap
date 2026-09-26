@@ -21,15 +21,39 @@ permissions:
   contents: read
 
 jobs:
+  determine-runner:
+    uses: peasant-labs/infra/.github/workflows/runner-router.yml@runner-router-v1
+    with:
+      fallback: '["ubuntu-latest"]'
+    secrets:
+      RUNNER_STATUS_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+
   style:
     name: brew style (linux)
-    # GitHub-hosted ubuntu: setup-homebrew needs the preinstalled
-    # /home/linuxbrew tree owned by the job user.
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    needs: determine-runner
+    runs-on: ${{ fromJson(needs.determine-runner.outputs.runner) }}
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      # The pool image ships neither Homebrew nor the /home/linuxbrew tree the
+      # hosted ubuntu image preinstalls, so the tree has to be created with the
+      # right ownership before setup-homebrew adopts it. The hosted fallback
+      # already has a correctly-owned tree and takes the skip branch.
+      - name: Prepare the Homebrew prefix
+        run: |
+          set -euo pipefail
+          if [ -d /home/linuxbrew ] && [ -w /home/linuxbrew ]; then
+            echo "/home/linuxbrew already present and writable (hosted runner)"
+            exit 0
+          fi
+          if [ "$(id -u)" -ne 0 ]; then
+            echo "::error::cannot create /home/linuxbrew as uid $(id -u); this job needs root on the pool"
+            exit 1
+          fi
+          mkdir -p /home/linuxbrew
+          chown -R "$(id -u):$(id -g)" /home/linuxbrew
+          echo "created /home/linuxbrew owned by $(id -u):$(id -g)"
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@5037c6f1012cc5ea0b9f03fedbaf9955ed9e51e0 # main
       - name: brew style the cask(s)
