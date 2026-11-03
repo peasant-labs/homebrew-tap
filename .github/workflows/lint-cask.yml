@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   determine-runner:
-    uses: peasant-labs/infra/.github/workflows/runner-router.yml@runner-router-v1
+    uses: peasant-labs/infra/.github/workflows/runner-router.yml@71e687cef7eede9a63659be98ce9adac3c563398
     with:
       fallback: '["ubuntu-latest"]'
     secrets:
@@ -98,5 +98,6 @@ jobs:
           cp "${casks[@]}" "$tap_dir/Casks/"
           for c in "${casks[@]}"; do
             token="$(basename "$c" .rb)"
+            brew trust --cask "$tap/$token"
             brew audit --cask "$tap/$token"
           done
