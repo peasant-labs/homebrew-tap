@@ -98,5 +98,6 @@ jobs:
           cp "${casks[@]}" "$tap_dir/Casks/"
           for c in "${casks[@]}"; do
             token="$(basename "$c" .rb)"
+            brew trust --cask "$tap/$token"
             brew audit --cask "$tap/$token"
           done
