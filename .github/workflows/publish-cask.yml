@@ -117,14 +117,15 @@ jobs:
         run: |
           set -euo pipefail
           cask="${{ runner.temp }}/cask/peasant.rb"
-          brew style "$cask"
-          # Homebrew refuses `brew audit --cask` on a bare file path, so stage
-          # the rendered cask in a throwaway tap and audit from there.
+          # Stage the rendered cask before styling. `brew style` on a bare temp
+          # path applies Homebrew's generic Ruby cops (including Sorbet sigils);
+          # the cask's tap context is what lint-cask styles and audits.
           tap="peasant-labs/cask-lint"
           brew tap-new "$tap"
           tap_dir="$(brew --repository "$tap")"
           mkdir -p "$tap_dir/Casks"
           cp "$cask" "$tap_dir/Casks/"
+          brew style "$tap_dir/Casks/peasant.rb"
           brew trust --cask "$tap/peasant"
           brew audit --cask "$tap/peasant"
 
