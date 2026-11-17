@@ -10,9 +10,9 @@ name: publish cask
 # releases/latest excludes prereleases.
 on:
   schedule:
-    # Four times an hour. A stable release is visible to the tap within fifteen
+    # Twelve times an hour. A stable release is visible to the tap within five
     # minutes, and a no-op tick costs one checkout and one API read.
-    - cron: "*/15 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
