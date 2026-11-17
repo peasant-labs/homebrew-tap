@@ -1,0 +1,163 @@
+name: publish cask
+
+# Publishes the latest final Peasant release to this tap.
+#
+# Peasant holds no credential for this repository, so its release pipeline
+# cannot push here. This workflow polls the latest final release on its own
+# schedule instead: it reads the release's public checksums.txt, renders
+# templates/peasant.rb.tmpl, audits the result on macOS, and commits with this
+# repository's own workflow token. A release candidate is never read, because
+# releases/latest excludes prereleases.
+on:
+  schedule:
+    # Four times an hour. A stable release is visible to the tap within fifteen
+    # minutes, and a no-op tick costs one checkout and one API read.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-cask
+  cancel-in-progress: false
+
+jobs:
+  determine-runner:
+    permissions:
+      contents: read
+    uses: peasant-labs/infra/.github/workflows/runner-router.yml@71e687cef7eede9a63659be98ce9adac3c563398
+    with:
+      fallback: '["ubuntu-latest"]'
+    secrets:
+      RUNNER_STATUS_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+
+  render:
+    name: render the cask
+    needs: determine-runner
+    runs-on: ${{ fromJson(needs.determine-runner.outputs.runner) }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      changed: ${{ steps.compare.outputs.changed }}
+    steps:
+      - name: Check out the tap
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Read the latest final release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh api repos/peasant-labs/peasant/releases/latest --jq .tag_name)"
+          version="${tag#v}"
+          if ! [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::latest release tag '${tag}' is not a final semantic version; a release candidate never reaches the tap"
+            exit 1
+          fi
+          mkdir -p "${RUNNER_TEMP}/release"
+          gh release download "$tag" --repo peasant-labs/peasant \
+            --pattern checksums.txt --dir "${RUNNER_TEMP}/release" --clobber
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "latest final release: ${tag}"
+
+      - name: Render against the release checksums
+        run: |
+          set -euo pipefail
+          scripts/render-cask.sh \
+            "${{ steps.release.outputs.version }}" \
+            "${RUNNER_TEMP}/release/checksums.txt" \
+            templates/peasant.rb.tmpl \
+            "${RUNNER_TEMP}/peasant.rb"
+          ruby -c "${RUNNER_TEMP}/peasant.rb"
+
+      - name: Compare with the published cask
+        id: compare
+        run: |
+          set -euo pipefail
+          if cmp -s "${RUNNER_TEMP}/peasant.rb" Casks/peasant.rb; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "the tap already carries peasant ${{ steps.release.outputs.version }}"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "the tap needs peasant ${{ steps.release.outputs.version }}"
+            diff -u Casks/peasant.rb "${RUNNER_TEMP}/peasant.rb" || true
+          fi
+
+      - name: Hand the rendered cask to the audit and publish jobs
+        if: steps.compare.outputs.changed == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: peasant-cask
+          path: ${{ runner.temp }}/peasant.rb
+          if-no-files-found: error
+          retention-days: 1
+
+  audit:
+    name: brew audit (macos)
+    needs: render
+    if: needs.render.outputs.changed == 'true'
+    runs-on: macos-15
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Download the rendered cask
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: peasant-cask
+          path: ${{ runner.temp }}/cask
+
+      - name: Style and audit it in a throwaway tap
+        run: |
+          set -euo pipefail
+          cask="${{ runner.temp }}/cask/peasant.rb"
+          brew style "$cask"
+          # Homebrew refuses `brew audit --cask` on a bare file path, so stage
+          # the rendered cask in a throwaway tap and audit from there.
+          tap="peasant-labs/cask-lint"
+          brew tap-new "$tap"
+          tap_dir="$(brew --repository "$tap")"
+          mkdir -p "$tap_dir/Casks"
+          cp "$cask" "$tap_dir/Casks/"
+          brew trust --cask "$tap/peasant"
+          brew audit --cask "$tap/peasant"
+
+  publish:
+    name: commit the cask
+    needs: [determine-runner, render, audit]
+    if: needs.render.outputs.changed == 'true'
+    runs-on: ${{ fromJson(needs.determine-runner.outputs.runner) }}
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the tap
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Download the audited cask
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: peasant-cask
+          path: ${{ runner.temp }}/cask
+
+      - name: Commit and push when the cask changed
+        env:
+          VERSION: ${{ needs.render.outputs.version }}
+        run: |
+          set -euo pipefail
+          cp "${{ runner.temp }}/cask/peasant.rb" Casks/peasant.rb
+          if git diff --quiet -- Casks/peasant.rb; then
+            echo "the cask already matches peasant ${VERSION}"
+            exit 0
+          fi
+          git config user.name "peasant-release-bot"
+          git config user.email "noreply@peasantlabs.org"
+          git add Casks/peasant.rb
+          git commit -m "chore(cask): update peasant to v${VERSION}"
+          git push origin HEAD:main

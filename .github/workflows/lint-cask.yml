@@ -1,10 +1,13 @@
 name: lint cask
 
-# Guards the GENERATED Casks/peasant.rb that the Peasant release bot pushes to
-# main on each final release. This mirrors the peasant repo's own split: brew
-# style is the Linux-safe subset, while brew audit --cask is known-broken for
-# macOS casks on Linux, so the audit runs on macOS only. Both jobs no-op cleanly
-# while Casks/ is empty (before the first final release populates the tap).
+# Guards Casks/peasant.rb for human changes. The scheduled publisher in
+# publish-cask.yml renders and audits the cask before it pushes; a push made
+# with the workflow token does not trigger workflows, so this job exists for
+# edits that arrive through a branch or pull request. This mirrors the peasant
+# repo's own split: brew style is the Linux-safe subset, while brew audit
+# --cask is known-broken for macOS casks on Linux, so the audit runs on macOS
+# only. Both jobs no-op cleanly while Casks/ is empty (before the first final
+# release populates the tap).
 
 on:
   push:
