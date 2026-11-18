@@ -3,25 +3,25 @@
 # This file is rendered by .github/workflows/publish-cask.yml from the latest
 # final Peasant release. DO NOT EDIT: change templates/peasant.rb.tmpl instead.
 cask "peasant" do
-  version "0.19.0"
+  version "0.21.0"
 
   on_macos do
     on_arm do
-      sha256 "e7eab78fbad07919bee4a1cf6184816758424c8b2c98254d2e9e788522b2d27a"
+      sha256 "f3fe7121c50da25379251cf8d74fb50f14faad697be9c76f72dc1c96ad40c481"
       url "https://github.com/peasant-labs/peasant/releases/download/v#{version}/peasant_#{version}_darwin_arm64.tar.gz"
     end
     on_intel do
-      sha256 "1b7b81afe333522dd3e3c0963c4a44596bd77aca7c4bd219a6d36989fc817a99"
+      sha256 "33bacb37b7744f0dc28e128b7e39ac48de84f7d145d1e11c61207ce43837b1ef"
       url "https://github.com/peasant-labs/peasant/releases/download/v#{version}/peasant_#{version}_darwin_amd64.tar.gz"
     end
   end
   on_linux do
     on_arm do
-      sha256 "601d43aca42b7cb053bc88ff680535184c1b31a454c453bdc216fb04770c7b4e"
+      sha256 "7882d68fa4b97815812da2faa68d11bf15ca6ac83e0d9ac8927eac7f48f0847f"
       url "https://github.com/peasant-labs/peasant/releases/download/v#{version}/peasant_#{version}_linux_arm64.tar.gz"
     end
     on_intel do
-      sha256 "58fb2746f907facf2e00d097add1257ba5ac1ea012519f2820a5f206ee3433fa"
+      sha256 "6eb4df31459373395e334711eb8fbf0a9a1e8c7c650014908f5330018f9f3f69"
       url "https://github.com/peasant-labs/peasant/releases/download/v#{version}/peasant_#{version}_linux_amd64.tar.gz"
     end
   end
