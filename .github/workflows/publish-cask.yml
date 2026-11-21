@@ -74,7 +74,8 @@ jobs:
             "${RUNNER_TEMP}/release/checksums.txt" \
             templates/peasant.rb.tmpl \
             "${RUNNER_TEMP}/peasant.rb"
-          ruby -c "${RUNNER_TEMP}/peasant.rb"
+          # No Ruby syntax check here: this job can run on the self-hosted pool,
+          # which has no Ruby. The macOS audit job styles and audits the cask.
 
       - name: Compare with the published cask
         id: compare
